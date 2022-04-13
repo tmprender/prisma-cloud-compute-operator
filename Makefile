@@ -1,5 +1,5 @@
 # VERSION defines the project version for the bundle.
-VERSION ?= 0.2.0
+VERSION ?= 0.2.2
 
 # CHANNELS define the bundle channels used in the bundle.
 ifdef CHANNELS

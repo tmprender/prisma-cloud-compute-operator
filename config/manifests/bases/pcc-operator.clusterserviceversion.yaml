@@ -6,8 +6,8 @@ metadata:
     alm-examples: "[]"
     capabilities: Seamless Upgrades
     categories: Security
-    containerImage: quay.io/prismacloud/pcc-operator@sha256:b8fcfbd6c51286c874e00db1bd35523386cec406fa4050ef44c0a887730cf9b8
-    createdAt: '2021-11-15'
+    containerImage: quay.io/prismacloud/pcc-operator@sha256:91469e90fb442d747a5dd462a3b8e80cea2c590881a685bc58c562f1382e2fec
+    createdAt: '2022-04-13'
     description: Deploy Prisma Cloud Compute for cloud-native security in your clusters
     operators.openshift.io/infrastructure-features: '["Disconnected"]'
     operators.operatorframework.io/builder: operator-sdk-v1.14.0
