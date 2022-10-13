@@ -13,3 +13,9 @@ annotations:
   # Annotations for testing.
   operators.operatorframework.io.test.mediatype.v1: scorecard+v1
   operators.operatorframework.io.test.config.v1: tests/scorecard/
+
+  # Annotations for OpenShift.
+  # https://redhat-connect.gitbook.io/certified-operator-guide/ocp-deployment/operator-metadata/bundle-directory
+  com.redhat.delivery.backport: true
+  com.redhat.delivery.operator.bundle: true
+  com.redhat.openshift.versions: v4.6

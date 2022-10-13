@@ -6,5 +6,5 @@ resources:
 
 images:
 - name: controller
-  newName: quay.io/acornett/pcc-operator
-  newTag: v0.2.3
+  newName: quay.io/prismacloud/pcc-operator
+  digest: sha256:51a343d5ea0115e3c43ccaa546492e85ab74cf2cf2658d725c1ea7099fc89191

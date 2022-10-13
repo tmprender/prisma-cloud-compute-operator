@@ -57,8 +57,7 @@ metadata:
       ]
     capabilities: Seamless Upgrades
     categories: Security
-    containerImage: quay.io/prismacloud/pcc-operator@sha256:91469e90fb442d747a5dd462a3b8e80cea2c590881a685bc58c562f1382e2fec
-    createdAt: "2022-04-13"
+    containerImage: quay.io/prismacloud/pcc-operator@sha256:51a343d5ea0115e3c43ccaa546492e85ab74cf2cf2658d725c1ea7099fc89191
     description: Deploy Prisma Cloud Compute for cloud-native security in your clusters
     operators.openshift.io/infrastructure-features: '["Disconnected"]'
     operators.operatorframework.io/builder: operator-sdk-v1.17.0+git
@@ -560,7 +559,7 @@ spec:
                       key: username
                       name: pcc-credentials
                       optional: true
-                image: quay.io/acornett/pcc-operator:v0.2.3
+                image: quay.io/prismacloud/pcc-operator@sha256:51a343d5ea0115e3c43ccaa546492e85ab74cf2cf2658d725c1ea7099fc89191
                 imagePullPolicy: Always
                 livenessProbe:
                   httpGet:
