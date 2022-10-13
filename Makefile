@@ -1,5 +1,5 @@
 # VERSION defines the project version for the bundle.
-VERSION ?= 0.2.2
+VERSION ?= 0.2.3
 
 # CHANNELS define the bundle channels used in the bundle.
 ifdef CHANNELS
@@ -17,6 +17,17 @@ endif
 
 BUNDLE_METADATA_OPTS = $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
+# BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
+BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+
+# USE_IMAGE_DIGESTS defines if images are resolved via tags or digests
+# You can enable this value if you would like to use SHA Based Digests
+# To enable set flag to true
+USE_IMAGE_DIGESTS ?= true
+ifeq ($(USE_IMAGE_DIGESTS), true)
+    BUNDLE_GEN_FLAGS += --use-image-digests
+endif
+
 # OPERATOR_IMAGE_BASE defines the docker.io namespace and part of the image name for remote images.
 # This variable is used to construct full image tags for bundle and catalog images.
 OPERATOR_IMAGE_BASE ?= quay.io/prismacloud/pcc-operator
@@ -24,8 +35,14 @@ OPERATOR_IMAGE_BASE ?= quay.io/prismacloud/pcc-operator
 # Image URL to use all building/pushing image targets
 OPERATOR_IMG ?= $(OPERATOR_IMAGE_BASE):v$(VERSION)
 
-all: help
+# OPERATOR_SDK defines where to store the operator-sdk binary that this project uses to build bundles, this way
+# The binary is project local and doesn't matter what version a developer has on their system
+OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
 
+OPERATOR_SDK_VERSION ?= v1.18.0
+
+.PHONY: all
+all: docker-build
 
 # The help target prints out all targets with their descriptions organized
 # beneath their categories. The categories are represented by '##@' and the
@@ -37,6 +54,8 @@ all: help
 # https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_parameters
 # More info on the awk command:
 # http://linuxcommand.org/lc3_adv_awk.php
+
+.PHONY: help
 help: ## Print this text
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[$$()% a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
@@ -44,17 +63,31 @@ help: ## Print this text
 ############
 # OPERATOR #
 ############
+.PHONY: run
+run: ansible-operator ## Run against the configured Kubernetes cluster in ~/.kube/config
+	ANSIBLE_ROLES_PATH="$(ANSIBLE_ROLES_PATH):$(shell pwd)/roles" $(ANSIBLE_OPERATOR) run
 
-operator-build: ## Build operator image
-	docker build -t $(OPERATOR_IMG) --build-arg VERSION=v$(VERSION) .
+.PHONY: operator-build
+docker-build: ## Build operator image
+	docker build -t $(OPERATOR_IMG) --build-arg VERSION=v$(VERSION) --build-arg OPERATOR_SDK_VERSION=$(OPERATOR_SDK_VERSION) .
 
-operator-push: ## Push operator image
+.PHONY: docker-push
+docker-push: ## Push operator image
 	docker push $(OPERATOR_IMG)
 
+.PHONY: install
+install: kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
+	$(KUSTOMIZE) build config/crd | kubectl apply -f -
+
+.PHONY: uninstall
+uninstall: kustomize ## Uninstall CRDs from the K8s cluster spe
+
+.PHONY: deploy
 deploy: kustomize ## Deploy to cluster specified in ~/.kube/config
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(OPERATOR_IMG)
 	$(KUSTOMIZE) build config/deploy | kubectl apply -f -
 
+.PHONY: undeploy
 undeploy: ## Remove from cluster specified in ~/.kube/config
 	$(KUSTOMIZE) build config/deploy | kubectl delete -f -
 
@@ -65,27 +98,17 @@ undeploy: ## Remove from cluster specified in ~/.kube/config
 
 BUNDLE_IMG ?= $(OPERATOR_IMAGE_BASE)-bundle:v$(VERSION)
 
-.PHONY: manifests
-manifests: kustomize operator-build operator-push ## Generate manifests and update image reference
-	operator-sdk generate kustomize manifests -q
-	repo_digest=$$(docker inspect --format '{{ .RepoDigests }}' $(OPERATOR_IMG) | grep -Eo 'quay.io/prismacloud/pcc-operator@sha256:\w{64}') \
-	&& scripts/update_csv.rb "$$repo_digest" \
-	&& cd config/manager && $(KUSTOMIZE) edit set image controller="$$repo_digest" \
-
 .PHONY: bundle
-bundle: manifests ## Generate bundle then validate generated files
-	$(KUSTOMIZE) build config/manifests | operator-sdk generate bundle --manifests --version $(VERSION) $(BUNDLE_METADATA_OPTS)
-	cd bundle/manifests \
-	&& rm -f pcc-operator.v*.clusterserviceversion.yaml \
-	&& mv pcc-operator.clusterserviceversion.yaml pcc-operator.v$(VERSION).clusterserviceversion.yaml \
-	&& mv pcc.paloaltonetworks.com_consoledefenders.yaml consoledefenders.pcc.paloaltonetworks.com.crd.yaml \
-	&& mv pcc.paloaltonetworks.com_consoles.yaml consoles.pcc.paloaltonetworks.com.crd.yaml \
-	&& mv pcc.paloaltonetworks.com_defenders.yaml defenders.pcc.paloaltonetworks.com.crd.yaml
-	operator-sdk bundle validate bundle
+bundle: kustomize operator-sdk## Generate bundle manifests and metadata, then validate generated files.
+	$(OPERATOR_SDK) generate kustomize manifests --interactive=false -q
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(OPERATOR_IMG)
+	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
+
+	$(OPERATOR_SDK) bundle validate ./bundle
 
 .PHONY: bundle-build
 bundle-build: ## Build bundle image
-	cd bundle && docker build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+	docker build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
 
 .PHONY: bundle-push
 bundle-push: ## Push bundle image
@@ -116,7 +139,6 @@ catalog-build: opm ## Build a catalog image by adding bundle images to an empty 
 catalog-push: ## Push the catalog image
 	docker push $(CATALOG_IMG)
 
-
 ############
 # BINARIES #
 ############
@@ -132,11 +154,27 @@ ifeq (,$(shell which kustomize 2>/dev/null))
 	@{ \
 	set -e ;\
 	mkdir -p $(dir $(KUSTOMIZE)) ;\
-	curl -sSLo - https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v3.5.4/kustomize_v3.5.4_$(OS)_$(ARCH).tar.gz | \
+	curl -sSLo - https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v4.5.5/kustomize_v4.5.5_$(OS)_$(ARCH).tar.gz | \
 	tar xzf - -C bin/ ;\
 	}
 else
 KUSTOMIZE = $(shell which kustomize)
+endif
+endif
+
+.PHONY: ansible-operator
+ANSIBLE_OPERATOR = $(shell pwd)/bin/ansible-operator
+ansible-operator: ## Download ansible-operator locally if necessary, preferring the $(pwd)/bin path over global if both exist.
+ifeq (,$(wildcard $(ANSIBLE_OPERATOR)))
+ifeq (,$(shell which ansible-operator 2>/dev/null))
+	@{ \
+	set -e ;\
+	mkdir -p $(dir $(ANSIBLE_OPERATOR)) ;\
+	curl -sSLo $(ANSIBLE_OPERATOR) https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/ansible-operator_$(OS)_$(ARCH) ;\
+	chmod +x $(ANSIBLE_OPERATOR) ;\
+	}
+else
+ANSIBLE_OPERATOR = $(shell which ansible-operator)
 endif
 endif
 
@@ -148,10 +186,25 @@ ifeq (,$(shell which opm 2>/dev/null))
 	@{ \
 	set -e ;\
 	mkdir -p $(dir $(OPM)) ;\
-	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.17.5/$(OS)-$(ARCH)-opm ;\
+	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.23.0/$(OS)-$(ARCH)-opm ;\
 	chmod +x $(OPM) ;\
 	}
 else
 OPM = $(shell which opm)
 endif
 endif
+
+## Location to install dependencies to
+LOCALBIN ?= $(shell pwd)/bin
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
+
+.PHONY: operator-sdk
+operator-sdk: $(OPERATOR_SDK) ## Download operator-sdk locally if necessary.
+$(OPERATOR_SDK): $(LOCALBIN)
+	@{ \
+	set -e ;\
+	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
+	curl -sSLo $(OPERATOR_SDK) https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$${OS}_$${ARCH} ;\
+	chmod +x $(OPERATOR_SDK) ;\
+	}
