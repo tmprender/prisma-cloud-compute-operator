@@ -61,11 +61,11 @@ metadata:
     createdAt: "2022-04-13"
     description: Deploy Prisma Cloud Compute for cloud-native security in your clusters
     operators.openshift.io/infrastructure-features: '["Disconnected"]'
-    operators.operatorframework.io/builder: operator-sdk-v1.17.0
+    operators.operatorframework.io/builder: operator-sdk-v1.17.0+git
     operators.operatorframework.io/project_layout: ansible.sdk.operatorframework.io/v1
     repository: https://github.com/PaloAltoNetworks/prisma-cloud-compute-operator
     support: pcc-integrations@paloaltonetworks.com
-  name: pcc-operator.v0.2.2
+  name: pcc-operator.v0.2.3
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -560,7 +560,7 @@ spec:
                       key: username
                       name: pcc-credentials
                       optional: true
-                image: quay.io/prismacloud/pcc-operator@sha256:91469e90fb442d747a5dd462a3b8e80cea2c590881a685bc58c562f1382e2fec
+                image: quay.io/acornett/pcc-operator:v0.2.3
                 imagePullPolicy: Always
                 livenessProbe:
                   httpGet:
@@ -662,4 +662,4 @@ spec:
   maturity: alpha
   provider:
     name: Palo Alto Networks
-  version: 0.2.2
+  version: 0.2.3
